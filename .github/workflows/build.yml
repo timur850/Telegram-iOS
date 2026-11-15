@@ -68,7 +68,9 @@ jobs:
             --configuration=release_arm64 \
             --buildNumber="$((${{ github.run_number }} + $(cat build_number_offset) + 100000))"
           mkdir -p out
-          cp bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa out/ || true
+          IPA=$(find -L bazel-bin/Telegram -maxdepth 1 -name 'Telegram.ipa' | head -1)
+          echo "ipa: $IPA"
+          cp "$IPA" out/
 
       - uses: actions/upload-artifact@v4
         with:
