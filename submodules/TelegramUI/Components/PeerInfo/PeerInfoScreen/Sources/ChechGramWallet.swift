@@ -4,20 +4,25 @@ import Display
 import AccountContext
 import TelegramPresentationData
 import PromptUI
+import SwiftSignalKit
+import TelegramCore
 
 /// A gift that can be "bought" with the visual wallet. Purely cosmetic.
 private struct ChechGramCatalogGift {
     let title: String
     let price: Double
     let currency: String
+    let giftId: String
 }
 
-private let chechGramCatalog: [ChechGramCatalogGift] = [
-    ChechGramCatalogGift(title: "Plush Pepe", price: 3000, currency: "stars"),
-    ChechGramCatalogGift(title: "Heart Locket", price: 1500, currency: "stars"),
-    ChechGramCatalogGift(title: "Durov's Cap", price: 800, currency: "stars"),
-    ChechGramCatalogGift(title: "Precious Peach", price: 2, currency: "ton"),
-    ChechGramCatalogGift(title: "Loot Bag", price: 5, currency: "ton")
+/// Collectible gifts are not in Telegram's regular catalog, so they are listed here by hand.
+/// Prices are rough and only matter for the visual balance.
+private let chechGramCollectibles: [ChechGramCatalogGift] = [
+    ChechGramCatalogGift(title: "Plush Pepe", price: 3000, currency: "ton", giftId: ""),
+    ChechGramCatalogGift(title: "Heart Locket", price: 600, currency: "ton", giftId: ""),
+    ChechGramCatalogGift(title: "Durov's Cap", price: 400, currency: "ton", giftId: ""),
+    ChechGramCatalogGift(title: "Precious Peach", price: 250, currency: "ton", giftId: ""),
+    ChechGramCatalogGift(title: "Loot Bag", price: 100, currency: "ton", giftId: "")
 ]
 
 /// The owner's own visual profile, including the private play-money wallet.
@@ -120,7 +125,7 @@ private enum ChechGramApi {
                 completion(0)
                 return
             }
-            let body: [String: Any] = ["title": gift.title, "price": gift.price, "currency": gift.currency]
+            let body: [String: Any] = ["title": gift.title, "price": gift.price, "currency": gift.currency, "giftId": gift.giftId]
             call(path: "/v1/buy", method: "POST", authorization: auth, body: body) { code, _ in
                 ChechGramVisualProfileStore.shared.invalidate(userId: peerId)
                 completion(code)
@@ -232,22 +237,37 @@ private func showChechGramMenu(context: AccountContext, controller: ViewControll
 }
 
 private func showChechGramCatalog(context: AccountContext, controller: ViewController, peerId: Int64, reopen: @escaping () -> Void) {
-    var buttons: [(String, () -> Void)] = []
-    for gift in chechGramCatalog {
-        let price = gift.currency == "ton" ? "\(formatChechGramAmount(gift.price)) TON" : "\(formatChechGramAmount(gift.price)) ⭐"
-        buttons.append(("\(gift.title) — \(price)", { [weak controller] in
-            ChechGramApi.buy(peerId: peerId, gift: gift, completion: { code in
-                guard let controller = controller else {
-                    return
-                }
-                if code == 200 {
-                    reopen()
-                } else {
-                    let message = code == 402 ? "Не хватает визуального баланса." : "Не удалось купить подарок."
-                    showChechGramSheet(context: context, controller: controller, title: message, buttons: [])
-                }
-            })
-        }))
-    }
-    showChechGramSheet(context: context, controller: controller, title: "Визуальные подарки (за визуальный баланс)", buttons: buttons)
+    // Real catalog: every regular gift Telegram currently offers, with its real price in Stars.
+    let _ = (context.engine.payments.cachedStarGifts()
+    |> take(1)
+    |> deliverOnMainQueue).start(next: { [weak controller] gifts in
+        guard let controller = controller else {
+            return
+        }
+        var catalog: [ChechGramCatalogGift] = chechGramCollectibles
+        for gift in gifts ?? [] {
+            if case let .generic(info) = gift {
+                catalog.append(ChechGramCatalogGift(title: info.title ?? "Gift", price: Double(info.price), currency: "stars", giftId: String(info.id)))
+            }
+        }
+        
+        var buttons: [(String, () -> Void)] = []
+        for gift in catalog {
+            let price = gift.currency == "ton" ? "\(formatChechGramAmount(gift.price)) TON" : "\(formatChechGramAmount(gift.price)) ⭐"
+            buttons.append(("\(gift.title) — \(price)", { [weak controller] in
+                ChechGramApi.buy(peerId: peerId, gift: gift, completion: { code in
+                    guard let controller = controller else {
+                        return
+                    }
+                    if code == 200 {
+                        reopen()
+                    } else {
+                        let message = code == 402 ? "Не хватает визуального баланса." : "Не удалось купить подарок."
+                        showChechGramSheet(context: context, controller: controller, title: message, buttons: [])
+                    }
+                })
+            }))
+        }
+        showChechGramSheet(context: context, controller: controller, title: "Все подарки (оплата визуальным балансом)", buttons: buttons)
+    })
 }

@@ -103,6 +103,7 @@ func infoItems(
         let ItemPersonalChannel = 2001
         let ItemPhoneNumber = 3000
         let ItemUsername = 3001
+        let ItemChechGramGifts = 3006
         let ItemBirthdate = 3002
         let ItemAbout = 3003
         let ItemNote = 3004
@@ -244,6 +245,28 @@ func infoItems(
                     }
                 )
             )
+        }
+        
+        if let chechGramProfile = chechGramProfile, !chechGramProfile.gifts.isEmpty {
+            var giftTitles: [String] = []
+            for gift in chechGramProfile.gifts {
+                if let number = gift.number, number > 0 {
+                    giftTitles.append("\(gift.title) #\(number)")
+                } else {
+                    giftTitles.append(gift.title)
+                }
+            }
+            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(
+                id: ItemChechGramGifts,
+                label: "Подарки · ChechGram (визуальные)",
+                text: giftTitles.joined(separator: ", "),
+                textColor: .primary,
+                textBehavior: .multiLine(maxLines: 6, enabledEntities: []),
+                action: nil,
+                requestLayout: { animated in
+                    interaction.requestLayout(animated)
+                }
+            ))
         }
         
         if let cachedData = data.cachedData as? CachedUserData {
