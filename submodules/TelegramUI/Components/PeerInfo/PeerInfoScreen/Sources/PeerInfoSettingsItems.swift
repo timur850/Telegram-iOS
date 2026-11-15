@@ -243,6 +243,11 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 3, label: .text(devicesLabel), text: presentationData.strings.Settings_Devices, icon: PresentationResourcesSettings.devices, action: {
         interaction.openSettings(.devices)
     }))
+    items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 900, label: .text(""), text: "ChechGram", icon: PresentationResourcesSettings.stars, action: {
+        if let controller = interaction.getController() {
+            presentChechGramMenu(context: context, controller: controller)
+        }
+    }))
     items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 4, text: presentationData.strings.Settings_ChatFolders, icon: PresentationResourcesSettings.chatFolders, action: {
         interaction.openSettings(.chatFolders)
     }))
