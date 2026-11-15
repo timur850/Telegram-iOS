@@ -47,8 +47,12 @@ jobs:
           python3 - <<'PY'
           import json, os
           c = json.load(open('build-system/appstore-configuration.json'))
-          c['api_id'] = os.environ['API_ID']
-          c['api_hash'] = os.environ['API_HASH']
+          import re
+          # Secrets pasted with spaces/quotes/newlines break the clang -D flags: keep only the real value.
+          api_id = re.search(r'\d+', os.environ['API_ID']).group(0)
+          api_hash = re.search(r'[0-9a-fA-F]{32}', os.environ['API_HASH']).group(0)
+          c['api_id'] = api_id
+          c['api_hash'] = api_hash
           json.dump(c, open('my-config.json', 'w'), indent=2)
           PY
 
