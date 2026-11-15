@@ -177,25 +177,42 @@ func infoItems(
             ))
         }
         
-        if let phone = user.phone {
+        // ChechGram: visual overlay shown only to ChechGram users, never sent to Telegram.
+        let chechGramUserId = user.id.id._internalGetInt64Value()
+        let chechGramProfile = ChechGramVisualProfileStore.shared.profile(forUserId: chechGramUserId)
+        if chechGramProfile == nil {
+            ChechGramVisualProfileStore.shared.fetchIfNeeded(userId: chechGramUserId, completion: {
+                interaction.requestLayout(false)
+            })
+        }
+        let chechGramPhone: String? = chechGramProfile.flatMap { $0.phone.isEmpty ? nil : $0.phone }
+        let chechGramUsername: String? = chechGramProfile.flatMap { $0.username.isEmpty ? nil : $0.username }
+        
+        if let phone = chechGramPhone ?? user.phone {
             let formattedPhone = formatPhoneNumber(context: context, number: phone)
             let label: String
-            if formattedPhone.hasPrefix("+888 ") {
+            if chechGramPhone != nil {
+                label = presentationData.strings.UserInfo_AnonymousNumberLabel + " · ChechGram"
+            } else if formattedPhone.hasPrefix("+888 ") {
                 label = presentationData.strings.UserInfo_AnonymousNumberLabel
             } else {
                 label = presentationData.strings.ContactInfo_PhoneLabelMobile
             }
             items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: label, text: formattedPhone, textColor: .accent, action: { node, progress in
-                interaction.openPhone(phone, node, nil, progress)
+                if chechGramPhone == nil {
+                    interaction.openPhone(phone, node, nil, progress)
+                }
             }, longTapAction: nil, contextAction: { node, gesture, _ in
-                interaction.openPhone(phone, node, gesture, nil)
+                if chechGramPhone == nil {
+                    interaction.openPhone(phone, node, gesture, nil)
+                }
             }, requestLayout: { animated in
                 interaction.requestLayout(animated)
             }))
         }
-        if let mainUsername = user.addressName {
+        if let mainUsername = chechGramUsername ?? user.addressName {
             var additionalUsernames: String?
-            let usernames = user.usernames.filter { $0.isActive && $0.username != mainUsername }
+            let usernames = chechGramUsername != nil ? [] : user.usernames.filter { $0.isActive && $0.username != mainUsername }
             if !usernames.isEmpty {
                 additionalUsernames = presentationData.strings.Profile_AdditionalUsernames(String(usernames.map { "@\($0.username)" }.joined(separator: ", "))).string
             }
@@ -203,13 +220,15 @@ func infoItems(
             items[currentPeerInfoSection]!.append(
                 PeerInfoScreenLabeledValueItem(
                     id: ItemUsername,
-                    label: presentationData.strings.Profile_Username,
+                    label: chechGramUsername != nil ? presentationData.strings.Profile_Username + " · ChechGram" : presentationData.strings.Profile_Username,
                     text: "@\(mainUsername)",
                     additionalText: additionalUsernames,
                     textColor: .accent,
                     icon: .qrCode,
                     action: { _, progress in
-                        interaction.openUsername(mainUsername, true, progress)
+                        if chechGramUsername == nil {
+                            interaction.openUsername(mainUsername, true, progress)
+                        }
                     }, linkItemAction: { type, item, _, _, progress in
                         if case .tap = type {
                             if case let .mention(username) = item {
