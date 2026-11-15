@@ -57,11 +57,20 @@ jobs:
           json.dump(c, open('my-config.json', 'w'), indent=2)
           PY
 
+      - name: Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bazel-disk-cache
+          key: bazel-${{ github.sha }}
+          restore-keys: |
+            bazel-
+
       - name: Build
         run: |
           set -x
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
           python3 -u build-system/Make/Make.py $XCODE_OVERRIDE \
+            --cacheDir="$HOME/bazel-disk-cache" \
             build \
             --configurationPath=my-config.json \
             --codesigningInformationPath=build-system/fake-codesigning \
