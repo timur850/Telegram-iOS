@@ -39,6 +39,13 @@ final class ChechGramVisualProfileStore {
         return nil
     }
 
+    /// Forgets what is cached for the id so the next profile open fetches it again.
+    func invalidate(userId id: Int64) {
+        self.lock.lock()
+        self.cache[id] = nil
+        self.lock.unlock()
+    }
+    
     /// Starts one fetch for the id if nothing is known about it yet.
     /// `completion` runs on the main queue only if the answer contains a profile.
     func fetchIfNeeded(userId id: Int64, completion: @escaping () -> Void) {

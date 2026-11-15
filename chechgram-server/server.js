@@ -84,17 +84,30 @@ function authPeer(req) {
 
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
-function cleanProfile(input) {
-  const gifts = Array.isArray(input.gifts) ? input.gifts.slice(0, MAX_GIFTS) : [];
+const num = (v, max) => (Number.isFinite(v) && v >= 0 ? Math.min(v, max) : 0);
+
+function cleanGift(g) {
   return {
-    phone: str(input.phone, 32),
-    username: str(input.username, 64).replace(/^@/, ""),
-    gifts: gifts.map((g) => ({
-      title: str(g && g.title, 64),
-      // Telegram gift / sticker id if the client wants to render the real art.
-      giftId: str(g && g.giftId, 32),
-      number: Number.isFinite(g && g.number) ? g.number : 0,
-    })),
+    title: str(g && g.title, 64),
+    // Telegram gift / sticker id if the client wants to render the real art.
+    giftId: str(g && g.giftId, 32),
+    number: Number.isFinite(g && g.number) ? g.number : 0,
+    // Always true: gifts here are visual and ChechGram clients mark them as such.
+    visual: true,
+  };
+}
+
+function cleanProfile(input, prev) {
+  // Fields missing from the request keep their previous value (merge, not replace).
+  const keep = (k, v) => (input[k] === undefined && prev ? prev[k] : v);
+  const gifts = Array.isArray(input.gifts) ? input.gifts.slice(0, MAX_GIFTS).map(cleanGift) : [];
+  return {
+    // Play-money wallet, private to the owner (not returned by the public read).
+    stars: keep("stars", num(input.stars, 1e9)),
+    ton: keep("ton", num(input.ton, 1e9)),
+    phone: keep("phone", str(input.phone, 32)),
+    username: keep("username", str(input.username, 64).replace(/^@/, "")),
+    gifts: keep("gifts", gifts),
     updatedAt: Date.now(),
   };
 }
@@ -123,7 +136,7 @@ const server = http.createServer(async (req, res) => {
       const peerId = authPeer(req);
       if (!peerId) return send(res, 401, { error: "unauthorized" });
       if (req.method === "PUT") {
-        db[peerId].profile = cleanProfile(await readJson(req));
+        db[peerId].profile = cleanProfile(await readJson(req), db[peerId].profile);
         save();
         return send(res, 200, { ok: true });
       }
@@ -135,6 +148,25 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET") return send(res, 200, { profile: db[peerId].profile });
     }
 
+    // Visual purchase: spends play-money, adds a visual gift that stays on the profile.
+    if (req.method === "POST" && url.pathname === "/v1/buy") {
+      const peerId = authPeer(req);
+      if (!peerId) return send(res, 401, { error: "unauthorized" });
+      const body = await readJson(req);
+      const price = num(body.price, 1e9);
+      const currency = body.currency === "ton" ? "ton" : "stars";
+      const p = db[peerId].profile || cleanProfile({}, null);
+      if (!(price > 0)) return send(res, 400, { error: "bad price" });
+      if (p[currency] < price) return send(res, 402, { error: "not enough " + currency });
+      if (p.gifts.length >= MAX_GIFTS) return send(res, 400, { error: "too many gifts" });
+      p[currency] = Math.round((p[currency] - price) * 1e9) / 1e9;
+      p.gifts.push(cleanGift(body));
+      p.updatedAt = Date.now();
+      db[peerId].profile = p;
+      save();
+      return send(res, 200, { stars: p.stars, ton: p.ton, gifts: p.gifts });
+    }
+
     // Batch read: ?ids=1,2,3 -> { "1": {...} } (only ids that have a profile)
     if (req.method === "GET" && url.pathname === "/v1/profiles") {
       const ids = String(url.searchParams.get("ids") || "")
@@ -143,7 +175,10 @@ const server = http.createServer(async (req, res) => {
         .slice(0, MAX_IDS_PER_QUERY);
       const out = {};
       for (const id of ids) {
-        if (db[id] && db[id].profile) out[id] = db[id].profile;
+        if (db[id] && db[id].profile) {
+          const { stars, ton, ...publicProfile } = db[id].profile;
+          out[id] = publicProfile;
+        }
       }
       return send(res, 200, { profiles: out });
     }
